@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Juego de Emparejar - Desarrollo de Software</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #4CAF50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            max-width: 1200px;
+            width: 100%;
+            margin: 20px auto;
+        }
+
+        .grid-item {
+            background-color: #2196F3;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+            height: 100px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            user-select: none;
+            border: 1px solid #ddd;
+            text-align: center;
+            padding: 10px;
+            word-wrap: break-word;
+        }
+
+        .grid-item:hover {
+            background-color: #64B5F6;
+            transform: scale(1.05);
+        }
+
+        .grid-item.matched {
+            background-color: #4CAF50;
+            pointer-events: none;
+        }
+
+        .grid-item.selected {
+            background-color: #FFEB3B;
+            color: #333;
+        }
+
+        #scoreboard {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .player-score {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+
+        .player-score.active {
+            background-color: #e3f2fd;
+        }
+
+        #currentPlayer {
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #FF5722;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Juego - Empareja Términos de Desarrollo de Software</h1>
+
+<!-- Modal para ingresar jugadores -->
+<div id="playerModal" class="ui modal">
+    <div class="header">Configuración de Jugadores</div>
+    <div class="content">
+        <div class="ui form">
+            <div class="field">
+                <label>¿Cuántos jugadores son? (1-4)</label>
+                <input type="number" id="playerCount" min="1" max="4" value="2">
+            </div>
+            <div id="playerNamesContainer"></div>
+        </div>
+    </div>
+    <div class="actions">
+        <div class="ui primary button" id="addPlayersButton">Añadir Jugadores</div>
+        <div class="ui primary button" id="startGameButton" style="display:none;">Iniciar Juego</div>
+    </div>
+</div>
+
+<div id="currentPlayer"></div>
+<div id="scoreboard"></div>
+<div id="grid"></div>
+
+<div id="errorModal" class="ui modal">
+    <div class="header">¡Intenta de nuevo!</div>
+    <div class="content">
+        <p>No es una pareja correcta. ¡Sigue intentando!</p>
+    </div>
+    <div class="actions">
+        <div class="ui primary button" id="understoodButton">Entendido</div>
+    </div>
+</div>
+
+<div id="winnerModal" class="ui modal">
+    <div class="header">¡Felicitaciones!</div>
+    <div class="content">
+        <p id="winnerMessage"></p>
+    </div>
+    <div class="actions">
+        <div class="ui positive button" id="playAgainButton">Jugar de nuevo</div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"></script>
+<script>
+    let players = [];
+    let playerScores = {};
+    let currentPlayerIndex = 0;
+    let selectedItems = [];
+    let matchedPairs = 0;
+    let canClick = true;
+
+    const terms = [
+        { term: 'API', translation: 'Interfaz de Programación de Aplicaciones' },
+        { term: 'Bug', translation: 'Error de Software' },
+        { term: 'Cloud', translation: 'Nube' },
+        { term: 'DevOps', translation: 'Desarrollo y Operaciones' },
+        { term: 'Frontend', translation: 'Parte Visible del Software' },
+        { term: 'Backend', translation: 'Parte del Servidor' },
+        { term: 'Database', translation: 'Base de Datos' },
+        { term: 'Framework', translation: 'Marco de Trabajo' },
+        { term: 'Git', translation: 'Sistema de Control de Versiones' },
+        { term: 'Agile', translation: 'Desarrollo Ágil' }
+    ];
+
+    let shuffledCards = [];
+
+    function initializeGame() {
+        const cards = [];
+        terms.forEach(item => {
+            cards.push({ ...item, type: 'term' });
+            cards.push({ ...item, type: 'translation' });
+        });
+        shuffledCards = shuffleArray([...cards]);
+        
+        matchedPairs = 0;
+        selectedItems = [];
+        players.forEach(player => {
+            playerScores[player] = 0;
+        });
+        
+        updateScoreboard();
+        createGrid();
+    }
+
+    function createGrid() {
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        
+        shuffledCards.forEach((card, index) => {
+            const gridItem = document.createElement('div');
+            gridItem.classList.add('grid-item');
+            gridItem.setAttribute('data-index', index);
+            gridItem.textContent = '?';
+            gridItem.addEventListener('click', handleItemClick);
+            grid.appendChild(gridItem);
+        });
+    }
+
+    function handleItemClick(event) {
+        if (!canClick) return;
+        const gridItem = event.target;
+        const index = parseInt(gridItem.getAttribute('data-index'));
+
+        if (selectedItems.length >= 2 || gridItem.classList.contains('matched') || gridItem.classList.contains('selected')) {
+            return;
+        }
+
+        const card = shuffledCards[index];
+        gridItem.textContent = card.type === 'term' ? card.term : card.translation;
+        gridItem.classList.add('selected');
+        selectedItems.push({ index, gridItem, card });
+
+        if (selectedItems.length === 2) {
+            canClick = false;
+            setTimeout(checkMatch, 1000);
+        }
+    }
+
+    function checkMatch() {
+        const [first, second] = selectedItems;
+        const isMatch = first.card.term === second.card.term && first.card.type !== second.card.type;
+
+        if (isMatch) {
+            first.gridItem.classList.add('matched');
+            second.gridItem.classList.add('matched');
+            playerScores[players[currentPlayerIndex]]++;
+            matchedPairs++;
+            
+            if (matchedPairs === terms.length) {
+                showWinner();
+            }
+        } else {
+            first.gridItem.classList.remove('selected');
+            second.gridItem.classList.remove('selected');
+            first.gridItem.textContent = '?';
+            second.gridItem.textContent = '?';
+            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+            $('#errorModal').modal('show');
+        }
+
+        selectedItems = [];
+        updateScoreboard();
+        canClick = true;
+    }
+
+    function updateScoreboard() {
+        const scoreboard = document.getElementById('scoreboard');
+        scoreboard.innerHTML = '<h3>Puntuaciones:</h3>';
+        
+        players.forEach((player, index) => {
+            const playerDiv = document.createElement('div');
+            playerDiv.classList.add('player-score');
+            if (index === currentPlayerIndex) {
+                playerDiv.classList.add('active');
+            }
+            playerDiv.textContent = `${player}: ${playerScores[player]} puntos`;
+            scoreboard.appendChild(playerDiv);
+        });
+
+        document.getElementById('currentPlayer').textContent = `Turno de: ${players[currentPlayerIndex]}`;
+    }
+
+    function showWinner() {
+        const maxScore = Math.max(...Object.values(playerScores));
+        const winners = players.filter(player => playerScores[player] === maxScore);
+        let message = '';
+
+        if (winners.length === 1) {
+            message = `¡El ganador es ${winners[0]} con ${maxScore} puntos!`;
+        } else {
+            message = `¡Empate entre ${winners.join(' y ')} con ${maxScore} puntos!`;
+        }
+
+        document.getElementById('winnerMessage').textContent = message;
+        $('#winnerModal').modal('show');
+    }
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    function startGame() {
+        $('#playerModal').modal('hide');
+        initializeGame();
+    }
+
+    document.getElementById('addPlayersButton').addEventListener('click', () => {
+        const playerCount = parseInt(document.getElementById('playerCount').value);
+        const playerNamesContainer = document.getElementById('playerNamesContainer');
+        playerNamesContainer.innerHTML = '';
+
+        players = [];
+        for (let i = 0; i < playerCount; i++) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.placeholder = `Nombre del Jugador ${i + 1}`;
+            input.id = `playerName${i}`;
+            input.classList.add('ui', 'input');
+            input.style.margin = '5px 0';
+            playerNamesContainer.appendChild(input);
+        }
+
+        document.getElementById('startGameButton').style.display = 'block';
+    });
+
+    document.getElementById('startGameButton').addEventListener('click', () => {
+        const playerCount = parseInt(document.getElementById('playerCount').value);
+        let allFilled = true;
+
+        players = [];
+        for (let i = 0; i < playerCount; i++) {
+            const playerName = document.getElementById(`playerName${i}`).value;
+            if (playerName.trim() === '') {
+                allFilled = false;
+                break;
+            }
+            players.push(playerName);
+        }
+
+        if (allFilled) {
+            startGame();
+        } else {
+            alert('Por favor, introduce todos los nombres de jugadores.');
+        }
+    });
+
+    document.getElementById('understoodButton').addEventListener('click', () => {
+        $('#errorModal').modal('hide');
+    });
+
+    document.getElementById('playAgainButton').addEventListener('click', () => {
+        $('#winnerModal').modal('hide');
+        initializeGame();
+    });
+
+    $('#playerModal').modal('show');
+</script>
+</body>
+</html>
